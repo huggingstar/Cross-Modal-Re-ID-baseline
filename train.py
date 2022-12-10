@@ -1,5 +1,6 @@
 from __future__ import print_function
 import argparse
+import datetime
 import sys
 import time
 import torch
@@ -17,46 +18,37 @@ from model import embed_net
 from utils import *
 from loss import OriTripletLoss, TripletLoss_WRT
 from tensorboardX import SummaryWriter
+import datetime
+
+import local_path
+
+start_time = datetime.datetime.now()
 
 parser = argparse.ArgumentParser(description='PyTorch Cross-Modality Training')
+
 parser.add_argument('--dataset', default='sysu', help='dataset name: regdb or sysu]')
-parser.add_argument('--lr', default=0.1 , type=float, help='learning rate, 0.00035 for adam')
+parser.add_argument('--lr', default=0.1, type=float, help='learning rate, 0.00035 for adam')
 parser.add_argument('--optim', default='sgd', type=str, help='optimizer')
-parser.add_argument('--arch', default='resnet50', type=str,
-                    help='network baseline:resnet18 or resnet50')
-parser.add_argument('--resume', '-r', default='', type=str,
-                    help='resume from checkpoint')
+parser.add_argument('--arch', default='resnet50', type=str, help='network baseline:resnet18 or resnet50')
+parser.add_argument('--resume', '-r', default='', type=str, help='resume from checkpoint')
 parser.add_argument('--test-only', action='store_true', help='test only')
-parser.add_argument('--model_path', default='save_model/', type=str,
-                    help='model save path')
-parser.add_argument('--save_epoch', default=20, type=int,
-                    metavar='s', help='save model every 10 epochs')
-parser.add_argument('--log_path', default='log/', type=str,
-                    help='log save path')
-parser.add_argument('--vis_log_path', default='log/vis_log/', type=str,
-                    help='log save path')
-parser.add_argument('--workers', default=4, type=int, metavar='N',
-                    help='number of data loading workers (default: 4)')
-parser.add_argument('--img_w', default=144, type=int,
-                    metavar='imgw', help='img width')
-parser.add_argument('--img_h', default=288, type=int,
-                    metavar='imgh', help='img height')
-parser.add_argument('--batch-size', default=8, type=int,
-                    metavar='B', help='training batch size')
-parser.add_argument('--test-batch', default=64, type=int,
-                    metavar='tb', help='testing batch size')
-parser.add_argument('--method', default='agw', type=str,
-                    metavar='m', help='method type: base or agw')
-parser.add_argument('--margin', default=0.3, type=float,
-                    metavar='margin', help='triplet loss margin')
-parser.add_argument('--num_pos', default=4, type=int,
-                    help='num of pos per identity in each modality')
-parser.add_argument('--trial', default=1, type=int,
-                    metavar='t', help='trial (only for RegDB dataset)')
-parser.add_argument('--seed', default=0, type=int,
-                    metavar='t', help='random seed')
-parser.add_argument('--gpu', default='0', type=str,
-                    help='gpu device ids for CUDA_VISIBLE_DEVICES')
+parser.add_argument('--model_path', default='save_model/', type=str, help='model save path')
+parser.add_argument('--save_epoch', default=20, type=int, metavar='s', help='save model every 10 epochs')
+parser.add_argument('--log_path', default='log/', type=str, help='log save path')
+parser.add_argument('--vis_log_path', default='log/vis_log/', type=str, help='log save path')
+# parser.add_argument('--workers', default=4, type=int, metavar='N', help='number of data loading workers (default: 4)')
+parser.add_argument('--workers', default=0, type=int, metavar='N', help='number of data loading workers (default: 4)')
+parser.add_argument('--img_w', default=144, type=int, metavar='imgw', help='img width')
+parser.add_argument('--img_h', default=288, type=int, metavar='imgh', help='img height')
+# parser.add_argument('--batch-size', default=8, type=int, metavar='B', help='training batch size')
+parser.add_argument('--batch-size', default=4, type=int, metavar='B', help='training batch size')
+parser.add_argument('--test-batch', default=64, type=int, metavar='tb', help='testing batch size')
+parser.add_argument('--method', default='agw', type=str, metavar='m', help='method type: base or agw')
+parser.add_argument('--margin', default=0.3, type=float, metavar='margin', help='triplet loss margin')
+parser.add_argument('--num_pos', default=4, type=int, help='num of pos per identity in each modality')
+parser.add_argument('--trial', default=1, type=int, metavar='t', help='trial (only for RegDB dataset)')
+parser.add_argument('--seed', default=0, type=int, metavar='t', help='random seed')
+parser.add_argument('--gpu', default='0', type=str, help='gpu device ids for CUDA_VISIBLE_DEVICES')
 parser.add_argument('--mode', default='all', type=str, help='all or indoor')
 
 args = parser.parse_args()
@@ -66,11 +58,13 @@ set_seed(args.seed)
 
 dataset = args.dataset
 if dataset == 'sysu':
-    data_path = '../Datasets/SYSU-MM01/ori_data/'
+    # data_path = '../Datasets/SYSU-MM01/ori_data/'
+    data_path = local_path.my_test_SYSU_MM01
     log_path = args.log_path + 'sysu_log/'
     test_mode = [1, 2]  # thermal to visible
 elif dataset == 'regdb':
-    data_path = '../Datasets/RegDB/'
+    # data_path = '../Datasets/RegDB/'
+    data_path = local_path.data_RegDB
     log_path = args.log_path + 'regdb_log/'
     test_mode = [2, 1]  # visible to thermal
 
@@ -83,12 +77,18 @@ if not os.path.isdir(checkpoint_path):
 if not os.path.isdir(args.vis_log_path):
     os.makedirs(args.vis_log_path)
 
-suffix = dataset
-if args.method=='agw':
-    suffix = suffix + '_agw_p{}_n{}_lr_{}_seed_{}'.format(args.num_pos, args.batch_size, args.lr, args.seed)
-else:
-    suffix = suffix + '_base_p{}_n{}_lr_{}_seed_{}'.format(args.num_pos, args.batch_size, args.lr, args.seed)
+data_time = str(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+data_time = data_time.replace(':', '-')
 
+suffix = dataset
+if args.method == 'agw':
+    # suffix = suffix + '_agw_p{}_n{}_lr_{}_seed_{}'.format(args.num_pos, args.batch_size, args.lr, args.seed)
+    suffix = suffix + ' ' + data_time + '_agw_p{}_n{}_lr_{}_seed_{}'.format(args.num_pos, args.batch_size, args.lr,
+                                                                            args.seed)
+else:
+    # suffix = suffix + '_base_p{}_n{}_lr_{}_seed_{}'.format(args.num_pos, args.batch_size, args.lr, args.seed)
+    suffix = suffix + ' ' + data_time + '_base_p{}_n{}_lr_{}_seed_{}'.format(args.num_pos, args.batch_size, args.lr,
+                                                                             args.seed)
 
 if not args.optim == 'sgd':
     suffix = suffix + '_' + args.optim
@@ -104,24 +104,22 @@ if not os.path.isdir(vis_log_dir):
     os.makedirs(vis_log_dir)
 writer = SummaryWriter(vis_log_dir)
 print("==========\nArgs:{}\n==========".format(args))
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 best_acc = 0  # best test accuracy
 start_epoch = 0
 
 print('==> Loading data..')
 # Data loading code
+# Imagenet数据集的均值和方差为：mean=(0.485, 0.456, 0.406)，std=(0.229, 0.224, 0.225)，
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+# 把不同的 transform 操作 chain起来
 transform_train = transforms.Compose([
     transforms.ToPILImage(),
     transforms.Pad(10),
+    #                         h = 288     w = 144
     transforms.RandomCrop((args.img_h, args.img_w)),
     transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-    normalize,
-])
-transform_test = transforms.Compose([
-    transforms.ToPILImage(),
-    transforms.Resize((args.img_h, args.img_w)),
     transforms.ToTensor(),
     normalize,
 ])
@@ -131,10 +129,21 @@ if dataset == 'sysu':
     # training set
     trainset = SYSUData(data_path, transform=transform_train)
     # generate the idx of each person identity
+    # 把同一个人放到2个list中： 一个color_pos, 一个thermal_pos
+    # color_pos: rgb image label position
+    # thermal_pos: ir image label position
     color_pos, thermal_pos = GenIdx(trainset.train_color_label, trainset.train_thermal_label)
 
     # testing set
+    # test_id.txt 中的id在所有ir镜头下的照片
+    # query_img: ir image path. images in cam3 and cam6  -> list
+    # query_label: person id -> ndarray
+    # query_cam: camera id -> ndarray
     query_img, query_label, query_cam = process_query_sysu(data_path, mode=args.mode)
+    # test_id.txt 中的每个 id 在每个 rgb camera下随机抽取一张照片
+    # gall_img: rgb image path. -> list
+    # gall_label: person id -> ndarray
+    # gall_cam: camera id -> ndarray
     gall_img, gall_label, gall_cam = process_gallery_sysu(data_path, mode=args.mode, trial=0)
 
 elif dataset == 'regdb':
@@ -147,6 +156,14 @@ elif dataset == 'regdb':
     query_img, query_label = process_test_regdb(data_path, trial=args.trial, modal='visible')
     gall_img, gall_label = process_test_regdb(data_path, trial=args.trial, modal='thermal')
 
+transform_test = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.Resize((args.img_h, args.img_w)),
+    transforms.ToTensor(),
+    normalize,
+])
+
+# TestData: 将测试集中的照片resize为相同分辨率，并转为RGB
 gallset = TestData(gall_img, gall_label, transform=transform_test, img_size=(args.img_w, args.img_h))
 queryset = TestData(query_img, query_label, transform=transform_test, img_size=(args.img_w, args.img_h))
 
@@ -157,6 +174,15 @@ query_loader = data.DataLoader(queryset, batch_size=args.test_batch, shuffle=Fal
 n_class = len(np.unique(trainset.train_color_label))
 nquery = len(query_label)
 ngall = len(gall_label)
+
+'''
+dataset='sysu'    lr=0.1                        optim='sgd'                 arch='resnet50'   
+resume=''         test-only=False               model_path='save_model/'    save_epoch=20   
+log_path='log/'   vis_log_path='log/vis_log/'   workers=0    
+img_w=144         img_h=288   batch_size=4      test_batch=64  
+method='agw'    margin=0.3  num_pos=4         trial=1
+seed=0            gpu='0'     mode='all'
+'''
 
 print('Dataset {} statistics:'.format(dataset))
 print('  ------------------------------')
@@ -171,11 +197,16 @@ print('  ------------------------------')
 print('Data Loading Time:\t {:.3f}'.format(time.time() - end))
 
 print('==> Building model..')
-if args.method =='base':
-    net = embed_net(n_class, no_local= 'off', gm_pool =  'off', arch=args.arch)
+print('\targs.method:', args.method)
+# method='agw'
+if args.method == 'base':
+    print('args.method:', args.method)
+    net = embed_net(n_class, no_local='off', gm_pool='off', arch=args.arch)
 else:
-    net = embed_net(n_class, no_local= 'on', gm_pool = 'on', arch=args.arch)
+    net = embed_net(n_class, no_local='on', gm_pool='on', arch=args.arch)
+
 net.to(device)
+# 让内置的 cudnn 的 auto-tuner 自动寻找最适合当前配置的高效算法，来达到优化运行效率的目的
 cudnn.benchmark = True
 
 if len(args.resume) > 0:
@@ -196,11 +227,10 @@ if args.method == 'agw':
     criterion_tri = TripletLoss_WRT()
 else:
     loader_batch = args.batch_size * args.num_pos
-    criterion_tri= OriTripletLoss(batch_size=loader_batch, margin=args.margin)
+    criterion_tri = OriTripletLoss(batch_size=loader_batch, margin=args.margin)
 
 criterion_id.to(device)
 criterion_tri.to(device)
-
 
 if args.optim == 'sgd':
     ignored_params = list(map(id, net.bottleneck.parameters())) \
@@ -213,6 +243,7 @@ if args.optim == 'sgd':
         {'params': net.bottleneck.parameters(), 'lr': args.lr},
         {'params': net.classifier.parameters(), 'lr': args.lr}],
         weight_decay=5e-4, momentum=0.9, nesterov=True)
+
 
 # exp_lr_scheduler = lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
 def adjust_learning_rate(optimizer, epoch):
@@ -234,7 +265,6 @@ def adjust_learning_rate(optimizer, epoch):
 
 
 def train(epoch):
-
     current_lr = adjust_learning_rate(optimizer, epoch)
     train_loss = AverageMeter()
     id_loss = AverageMeter()
@@ -256,8 +286,9 @@ def train(epoch):
         input2 = Variable(input2.cuda())
 
         labels = Variable(labels.cuda())
+        # 新加的
+        labels = torch.tensor(labels, dtype=torch.long)
         data_time.update(time.time() - end)
-
 
         feat, out0, = net(input1, input2)
 
@@ -341,8 +372,8 @@ def test(epoch):
 
     # evaluation
     if dataset == 'regdb':
-        cmc, mAP, mINP      = eval_regdb(-distmat, query_label, gall_label)
-        cmc_att, mAP_att, mINP_att  = eval_regdb(-distmat_att, query_label, gall_label)
+        cmc, mAP, mINP = eval_regdb(-distmat, query_label, gall_label)
+        cmc_att, mAP_att, mINP_att = eval_regdb(-distmat_att, query_label, gall_label)
     elif dataset == 'sysu':
         cmc, mAP, mINP = eval_sysu(-distmat, query_label, gall_label, query_cam, gall_cam)
         cmc_att, mAP_att, mINP_att = eval_sysu(-distmat_att, query_label, gall_label, query_cam, gall_cam)
@@ -359,6 +390,7 @@ def test(epoch):
 
 # training
 print('==> Start Training...')
+# 设置 epoch 的值
 for epoch in range(start_epoch, 81 - start_epoch):
 
     print('==> Preparing Data Loader...')
@@ -409,8 +441,15 @@ for epoch in range(start_epoch, 81 - start_epoch):
             }
             torch.save(state, checkpoint_path + suffix + '_epoch_{}.t'.format(epoch))
 
-        print('POOL:   Rank-1: {:.2%} | Rank-5: {:.2%} | Rank-10: {:.2%}| Rank-20: {:.2%}| mAP: {:.2%}| mINP: {:.2%}'.format(
-            cmc[0], cmc[4], cmc[9], cmc[19], mAP, mINP))
-        print('FC:   Rank-1: {:.2%} | Rank-5: {:.2%} | Rank-10: {:.2%}| Rank-20: {:.2%}| mAP: {:.2%}| mINP: {:.2%}'.format(
-            cmc_att[0], cmc_att[4], cmc_att[9], cmc_att[19], mAP_att, mINP_att))
+        print(
+            'POOL:   Rank-1: {:.2%} | Rank-5: {:.2%} | Rank-10: {:.2%}| Rank-20: {:.2%}| mAP: {:.2%}| mINP: {:.2%}'.format(
+                cmc[0], cmc[4], cmc[9], cmc[19], mAP, mINP))
+        print(
+            'FC:   Rank-1: {:.2%} | Rank-5: {:.2%} | Rank-10: {:.2%}| Rank-20: {:.2%}| mAP: {:.2%}| mINP: {:.2%}'.format(
+                cmc_att[0], cmc_att[4], cmc_att[9], cmc_att[19], mAP_att, mINP_att))
         print('Best Epoch [{}]'.format(best_epoch))
+
+end_time = datetime.datetime.now()
+print('total cost time:', end_time - start_time)
+
+print('############### train done! ###############')

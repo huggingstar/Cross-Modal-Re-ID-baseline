@@ -1,19 +1,45 @@
+import os.path
+
 import numpy as np
 from PIL import Image
 import torch.utils.data as data
+
+import local_path
+
+'''
+# 代码重构
+这个文件应该重命名为 DatasetForAGW
+
+
+# 解释
+给每个数据集定义一个Dataset类
+
+'''
 
 
 class SYSUData(data.Dataset):
     def __init__(self, data_dir,  transform=None, colorIndex = None, thermalIndex = None):
         
-        data_dir = '../Datasets/SYSU-MM01/'
-        # Load training images (path) and labels
-        train_color_image = np.load(data_dir + 'train_rgb_resized_img.npy')
-        self.train_color_label = np.load(data_dir + 'train_rgb_resized_label.npy')
+        # data_dir = '../Datasets/SYSU-MM01/'
+        # data_dir = local_dataset_path.data_SYSU_MM01
 
-        train_thermal_image = np.load(data_dir + 'train_ir_resized_img.npy')
-        self.train_thermal_label = np.load(data_dir + 'train_ir_resized_label.npy')
-        
+        data_dir = local_path.my_test_SYSU_MM01
+
+        # Load training images (path) and labels
+        # train_color_image = np.load(data_dir + 'train_rgb_resized_img.npy')
+        # self.train_color_label = np.load(data_dir + 'train_rgb_resized_label.npy')
+        # train_color_image = np.load(data_dir + '\\train_rgb_resized_img.npy')
+        train_color_image = np.load(os.path.join(data_dir, 'train_rgb_resized_img.npy'))
+        # self.train_color_label = np.load(data_dir + '\\train_rgb_resized_label.npy')
+        self.train_color_label = np.load(os.path.join(data_dir, 'train_rgb_resized_label.npy'))
+
+        # train_thermal_image = np.load(data_dir + 'train_ir_resized_img.npy')
+        # self.train_thermal_label = np.load(data_dir + 'train_ir_resized_label.npy')
+        # train_thermal_image = np.load(data_dir + '\\train_ir_resized_img.npy')
+        train_thermal_image = np.load(os.path.join(data_dir, 'train_ir_resized_img.npy'))
+        # self.train_thermal_label = np.load(data_dir + '\\train_ir_resized_label.npy')
+        self.train_thermal_label = np.load(os.path.join(data_dir, 'train_ir_resized_label.npy'))
+
         # BGR to RGB
         self.train_color_image   = train_color_image
         self.train_thermal_image = train_thermal_image
@@ -22,13 +48,13 @@ class SYSUData(data.Dataset):
         self.tIndex = thermalIndex
 
     def __getitem__(self, index):
-
+        '''根据 index 取出 visible 和 infrared 照片及 label'''
         img1,  target1 = self.train_color_image[self.cIndex[index]],  self.train_color_label[self.cIndex[index]]
         img2,  target2 = self.train_thermal_image[self.tIndex[index]], self.train_thermal_label[self.tIndex[index]]
         
         img1 = self.transform(img1)
         img2 = self.transform(img2)
-
+        # 返回：图片1， 图片2， label1， label2
         return img1, img2, target1, target2
 
     def __len__(self):
@@ -39,6 +65,7 @@ class RegDBData(data.Dataset):
     def __init__(self, data_dir, trial, transform=None, colorIndex = None, thermalIndex = None):
         # Load training images (path) and labels
         data_dir = '../Datasets/RegDB/'
+        data_dir = local_path.data_RegDB
         train_color_list   = data_dir + 'idx/train_visible_{}'.format(trial)+ '.txt'
         train_thermal_list = data_dir + 'idx/train_thermal_{}'.format(trial)+ '.txt'
 
@@ -86,8 +113,10 @@ class RegDBData(data.Dataset):
 
     def __len__(self):
         return len(self.train_color_label)
-        
+
+
 class TestData(data.Dataset):
+    '''将测试集中的照片resize为相同分辨率，并转为RGB'''
     def __init__(self, test_img_file, test_label, transform=None, img_size = (144,288)):
 
         test_image = []

@@ -117,8 +117,11 @@ def pdist_torch(emb1, emb2):
     '''
     m, n = emb1.shape[0], emb2.shape[0]
     emb1_pow = torch.pow(emb1, 2).sum(dim = 1, keepdim = True).expand(m, n)
+    # Tensor.t() 矩阵转置
     emb2_pow = torch.pow(emb2, 2).sum(dim = 1, keepdim = True).expand(n, m).t()
     dist_mtx = emb1_pow + emb2_pow
+    # torch.addmm(input, mat1, mat2, *, beta=1, alpha=1, out=None) → Tensor
+    # out = beta * input + alpha * (mat1 @ mat2)
     dist_mtx = dist_mtx.addmm_(1, -2, emb1, emb2.t())
     # dist_mtx = dist_mtx.clamp(min = 1e-12)
     dist_mtx = dist_mtx.clamp(min = 1e-12).sqrt()
